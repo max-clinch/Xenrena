@@ -107,13 +107,13 @@ contract PredictionPlatform   {
 
         // Update total stake for the chosen option
         if (_prediction == PredictionOutcome.OptionA) {
-            market.totalStakeOptionA = market.totalStakeOptionA.add(msg.value);
+            market.totalStakeOptionA = market.totalStakeOptionA +=(msg.value);
         } else {
-            market.totalStakeOptionB = market.totalStakeOptionB.add(msg.value);
+            market.totalStakeOptionB = market.totalStakeOptionB +=(msg.value);
         }
 
         // Update user's stake for the chosen market and option
-        userStakes[_marketId][msg.sender] = userStakes[_marketId][msg.sender].add(msg.value);
+        userStakes[_marketId][msg.sender] = userStakes[_marketId][msg.sender] += (msg.value);
 
         // Update user's prediction history
         userPredictionHistory[_marketId] = PredictionRecord({
@@ -136,10 +136,10 @@ contract PredictionPlatform   {
             PredictionRecord memory predictionRecord = userPredictionHistory[i];
 
             if (predictionRecord.stakedAmount > 0 && !predictionRecord.rewarded) {
-                totalStakedAmount = totalStakedAmount.add(predictionRecord.stakedAmount);
+                totalStakedAmount = totalStakedAmount +=(predictionRecord.stakedAmount);
 
                 // Call calculateRewards only for records that haven't been rewarded yet
-                totalRewards = totalRewards.add(calculateRewards(
+                totalRewards = totalRewards +=(calculateRewards(
                     predictionRecord.stakedAmount,
                     predictionRecord.predictedOutcome,
                     predictionRecord.actualOutcome,
@@ -153,27 +153,30 @@ contract PredictionPlatform   {
     }
 
     function calculateRewards(
-        uint256 _stakedAmount,
-        PredictionOutcome _predictedOutcome,
-        PredictionOutcome _actualOutcome,
-        uint256 _totalStakeOptionA,
-        uint256 _totalStakeOptionB
-    ) internal pure returns (uint256) {
-        // Placeholder logic for reward calculation
-        // Replace this with your actual reward distribution logic based on the predicted and actual outcomes
+    uint256 _stakedAmount,
+    PredictionOutcome _predictedOutcome,
+    PredictionOutcome _actualOutcome,
+    uint256 _totalStakeOptionA,
+    uint256 _totalStakeOptionB
+) internal pure returns (uint256) {
+    // Placeholder logic for reward calculation
+    // Replace this with your actual reward distribution logic based on the predicted and actual outcomes
 
-        uint256 totalStaked = _totalStakeOptionA.add(_totalStakeOptionB);
+    uint256 totalStaked = _totalStakeOptionA + _totalStakeOptionB;
 
-        if (_predictedOutcome == _actualOutcome) {
-            if (_predictedOutcome == PredictionOutcome.OptionA) {
-                return (_stakedAmount.mul(_totalStakeOptionA)).div(totalStaked);
-            } else {
-                return (_stakedAmount.mul(_totalStakeOptionB)).div(totalStaked);
-            }
+    if (_predictedOutcome == _actualOutcome) {
+        if (_predictedOutcome == PredictionOutcome.OptionA) {
+            // Use standard multiplication operator
+            return (_stakedAmount * _totalStakeOptionA) / totalStaked;
+        } else {
+            // Use standard multiplication operator
+            return (_stakedAmount * _totalStakeOptionB) / totalStaked;
         }
-
-        return 0; // No reward if prediction is incorrect
     }
+
+    return 0; // No reward if prediction is incorrect
+}
+
 
     function distributeRewards(uint256 _marketId, PredictionOutcome _actualOutcome) external onlyOwner marketNotConcluded(_marketId) {
         PredictionMarket storage market = predictionMarkets[_marketId];
@@ -315,16 +318,17 @@ contract PredictionPlatform   {
         PredictionMarket storage market = predictionMarkets[uint256(marketId)];
         return market.category;
     }
-
+    
     function getTotalStakedTokens() external view returns (uint256) {
-        uint256 totalStakedTokens = 0;
+    uint256 totalStakedTokens = 0;
 
-        for (uint256 i = 0; i < predictionMarkets.length; i++) {
-            totalStakedTokens = totalStakedTokens.add(predictionMarkets[i].totalStakeOptionA).add(predictionMarkets[i].totalStakeOptionB);
-        }
-
-        return totalStakedTokens;
+    for (uint256 i = 0; i < predictionMarkets.length; i++) {
+        totalStakedTokens += (predictionMarkets[i].totalStakeOptionA) + (predictionMarkets[i].totalStakeOptionB);
     }
+
+    return totalStakedTokens;
+}
+
 
     function claimReward(uint256 _marketId) external {
         PredictionRecord storage predictionRecord = userPredictionHistory[_marketId];
@@ -371,9 +375,9 @@ contract PredictionPlatform   {
 
         // Update total stake for the chosen option
         if (predictionRecord.predictedOutcome == PredictionOutcome.OptionA) {
-            market.totalStakeOptionA = market.totalStakeOptionA.sub(predictionRecord.stakedAmount);
+            market.totalStakeOptionA -= predictionRecord.stakedAmount;
         } else {
-            market.totalStakeOptionB = market.totalStakeOptionB.sub(predictionRecord.stakedAmount);
+            market.totalStakeOptionB -= predictionRecord.stakedAmount;
         }
 
         // Update user's stake for the chosen market and option
