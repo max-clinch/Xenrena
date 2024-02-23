@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+import "@openzeppelin/contracts/utils/math/Math.sol";
+//import "@chainlink/contracts/src/v0.8/dev/ChainlinkClient.sol";
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./ChainlinkContracts/AutomatedFunctionConsumer.sol";
-
-contract PredictionPlatform is ChainlinkClient{
+contract PredictionPlatform   {
     address public owner;
-    IERC20 public token;
+    using Math for uint256;
 
     enum PredictionOutcome { NotSet, OptionA, OptionB }
     enum PredictionCategory { eSports, Sports, Finance, Politics, Fighting, Racing, Adventure, Cards }
@@ -29,6 +27,7 @@ contract PredictionPlatform is ChainlinkClient{
         PredictionOutcome actualOutcome;
         bool rewarded;
     }
+
     event PredictionMarketConcluded(uint256 indexed marketId);
 
     struct UserProfile {
@@ -39,7 +38,6 @@ contract PredictionPlatform is ChainlinkClient{
     }
 
     mapping(address => UserProfile) public userProfiles;
-
 
     mapping(uint256 => mapping(address => uint256)) public userStakes;
     mapping(uint256 => PredictionRecord) public userPredictionHistory;
@@ -52,7 +50,6 @@ contract PredictionPlatform is ChainlinkClient{
     mapping(address => Notification[]) public userNotifications;
     mapping(address => bool) public isAdmin;
 
-
     modifier onlyOwner() {
         require(msg.sender == owner, "Not the owner");
         _;
@@ -62,18 +59,18 @@ contract PredictionPlatform is ChainlinkClient{
         require(!predictionMarkets[_marketId].concluded, "Prediction market already concluded");
         _;
     }
+
     modifier onlyOwnerOrAdmin() {
         require(msg.sender == owner || isAdmin[msg.sender], "Not the owner or admin");
         _;
     }
 
-    constructor(address _tokenAddress) {
+    constructor() {
         owner = msg.sender;
-        token = IERC20(_tokenAddress);
         isAdmin[msg.sender] = true;
     }
 
-     function addAdmin(address _admin) external onlyOwner {
+    function addAdmin(address _admin) external onlyOwner {
         isAdmin[_admin] = true;
     }
 
@@ -101,29 +98,26 @@ contract PredictionPlatform is ChainlinkClient{
         return newMarketId;
     }
 
-    function stakeTokens(uint256 _marketId, uint256 _amount, PredictionOutcome _prediction) external {
-        require(_amount > 0, "Staked amount must be greater than 0");
+    function stakeTokens(uint256 _marketId, PredictionOutcome _prediction) external payable {
+        require(msg.value > 0, "Staked amount must be greater than 0");
         require(_prediction == PredictionOutcome.OptionA || _prediction == PredictionOutcome.OptionB, "Invalid prediction");
 
         PredictionMarket storage market = predictionMarkets[_marketId];
         require(!market.concluded, "Prediction market already concluded");
 
-        // Transfer tokens from the user to the contract
-        token.transferFrom(msg.sender, address(this), _amount);
-
         // Update total stake for the chosen option
         if (_prediction == PredictionOutcome.OptionA) {
-            market.totalStakeOptionA += _amount;
+            market.totalStakeOptionA = market.totalStakeOptionA.add(msg.value);
         } else {
-            market.totalStakeOptionB += _amount;
+            market.totalStakeOptionB = market.totalStakeOptionB.add(msg.value);
         }
 
         // Update user's stake for the chosen market and option
-        userStakes[_marketId][msg.sender] += _amount;
+        userStakes[_marketId][msg.sender] = userStakes[_marketId][msg.sender].add(msg.value);
 
         // Update user's prediction history
         userPredictionHistory[_marketId] = PredictionRecord({
-            stakedAmount: _amount,
+            stakedAmount: msg.value,
             predictedOutcome: _prediction,
             actualOutcome: PredictionOutcome.NotSet, // Set to NotSet initially
             rewarded: false
@@ -142,16 +136,16 @@ contract PredictionPlatform is ChainlinkClient{
             PredictionRecord memory predictionRecord = userPredictionHistory[i];
 
             if (predictionRecord.stakedAmount > 0 && !predictionRecord.rewarded) {
-                totalStakedAmount += predictionRecord.stakedAmount;
+                totalStakedAmount = totalStakedAmount.add(predictionRecord.stakedAmount);
 
                 // Call calculateRewards only for records that haven't been rewarded yet
-                totalRewards += calculateRewards(
+                totalRewards = totalRewards.add(calculateRewards(
                     predictionRecord.stakedAmount,
                     predictionRecord.predictedOutcome,
                     predictionRecord.actualOutcome,
                     predictionMarkets[i].totalStakeOptionA,
                     predictionMarkets[i].totalStakeOptionB
-                );
+                ));
             }
         }
 
@@ -168,13 +162,13 @@ contract PredictionPlatform is ChainlinkClient{
         // Placeholder logic for reward calculation
         // Replace this with your actual reward distribution logic based on the predicted and actual outcomes
 
-        uint256 totalStaked = _totalStakeOptionA + _totalStakeOptionB;
+        uint256 totalStaked = _totalStakeOptionA.add(_totalStakeOptionB);
 
         if (_predictedOutcome == _actualOutcome) {
             if (_predictedOutcome == PredictionOutcome.OptionA) {
-                return (_stakedAmount * _totalStakeOptionA) / totalStaked;
+                return (_stakedAmount.mul(_totalStakeOptionA)).div(totalStaked);
             } else {
-                return (_stakedAmount * _totalStakeOptionB) / totalStaked;
+                return (_stakedAmount.mul(_totalStakeOptionB)).div(totalStaked);
             }
         }
 
@@ -200,7 +194,7 @@ contract PredictionPlatform is ChainlinkClient{
 
                 // Distribute rewards to the user
                 if (userReward > 0) {
-                    token.transfer(msg.sender, userReward);
+                    payable(msg.sender).transfer(userReward);
                     predictionRecord.rewarded = true;
                 }
             }
@@ -212,7 +206,6 @@ contract PredictionPlatform is ChainlinkClient{
 
         emit PredictionMarketConcluded(_marketId);
     }
-
 
     function getOpenMarkets() external view returns (bytes32[] memory) {
         bytes32[] memory openMarkets = new bytes32[](predictionMarkets.length);
@@ -302,7 +295,7 @@ contract PredictionPlatform is ChainlinkClient{
 
     function getAllParticipants(bytes32 marketId) external view returns (address[] memory) {
         PredictionRecord storage predictionRecord = userPredictionHistory[uint256(marketId)];
-        address[] memory participants = new address[](2); // Assuming maximum of two participants (OptionA and OptionB)
+        address[] memory participants = new address[](2); // Assuming a maximum of two participants (OptionA and OptionB)
         uint256 participantCount = 0;
 
         if (predictionRecord.stakedAmount > 0) {
@@ -327,13 +320,13 @@ contract PredictionPlatform is ChainlinkClient{
         uint256 totalStakedTokens = 0;
 
         for (uint256 i = 0; i < predictionMarkets.length; i++) {
-            totalStakedTokens += predictionMarkets[i].totalStakeOptionA + predictionMarkets[i].totalStakeOptionB;
+            totalStakedTokens = totalStakedTokens.add(predictionMarkets[i].totalStakeOptionA).add(predictionMarkets[i].totalStakeOptionB);
         }
 
         return totalStakedTokens;
     }
 
-     function claimReward(uint256 _marketId) external {
+    function claimReward(uint256 _marketId) external {
         PredictionRecord storage predictionRecord = userPredictionHistory[_marketId];
 
         require(predictionRecord.stakedAmount > 0, "No stake found for the given market");
@@ -353,7 +346,7 @@ contract PredictionPlatform is ChainlinkClient{
         require(userReward > 0, "No rewards available for claiming");
 
         // Transfer the rewards to the user
-        token.transfer(msg.sender, userReward);
+        payable(msg.sender).transfer(userReward);
 
         // Mark the prediction as rewarded
         predictionRecord.rewarded = true;
@@ -374,13 +367,13 @@ contract PredictionPlatform is ChainlinkClient{
         require(!predictionRecord.rewarded, "Tokens already withdrawn or rewards claimed");
 
         // Transfer staked tokens back to the user
-        token.transfer(msg.sender, predictionRecord.stakedAmount);
+        payable(msg.sender).transfer(predictionRecord.stakedAmount);
 
         // Update total stake for the chosen option
         if (predictionRecord.predictedOutcome == PredictionOutcome.OptionA) {
-            market.totalStakeOptionA -= predictionRecord.stakedAmount;
+            market.totalStakeOptionA = market.totalStakeOptionA.sub(predictionRecord.stakedAmount);
         } else {
-            market.totalStakeOptionB -= predictionRecord.stakedAmount;
+            market.totalStakeOptionB = market.totalStakeOptionB.sub(predictionRecord.stakedAmount);
         }
 
         // Update user's stake for the chosen market and option
@@ -412,7 +405,7 @@ contract PredictionPlatform is ChainlinkClient{
 
             if (predictionRecord.stakedAmount > 0) {
                 // Transfer staked tokens back to the user
-                token.transfer(msg.sender, predictionRecord.stakedAmount);
+                payable(msg.sender).transfer(predictionRecord.stakedAmount);
 
                 // Mark the prediction as canceled
                 predictionRecord.stakedAmount = 0;
@@ -450,7 +443,7 @@ contract PredictionPlatform is ChainlinkClient{
 
                 // Transfer the rewards to the user
                 if (userReward > 0) {
-                    token.transfer(msg.sender, userReward);
+                    payable(msg.sender).transfer(userReward);
                 }
 
                 // Mark the prediction as rewarded
@@ -498,7 +491,4 @@ contract PredictionPlatform is ChainlinkClient{
         participatedMarkets = userProfile.participatedMarkets;
         rewardedMarkets = userProfile.rewardedMarkets;
     }
-
-
-
 }
