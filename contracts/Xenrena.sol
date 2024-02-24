@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/math/Math.sol";
 //import "@chainlink/contracts/src/v0.8/dev/ChainlinkClient.sol";
 
-contract PredictionPlatform   {
+contract Xenrena   {
     address public owner;
     using Math for uint256;
 
